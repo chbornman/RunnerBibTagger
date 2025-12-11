@@ -1,0 +1,22 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+test_folder/
+*_debug.*
+debug_images/
+bib_results.csv
+
+# Original test images (too large for git, use tests/fixtures instead)
+test_images/
+
+# macOS build artifacts
+build/
+dist/
+*.dmg
+*.app
+.eggs/
+*.egg-info/
+
+# Keep the ONNX model (it's essential)
+!models/bib_detector.onnx

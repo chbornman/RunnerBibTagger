@@ -1,0 +1,14 @@
+# ONNX-based inference (lightweight stack)
+# Using rapidocr 3.4.3 which includes PP-OCRv4 models (2023)
+# vs rapidocr-onnxruntime which uses PP-OCRv3 models (2022)
+onnxruntime>=1.15.0
+rapidocr>=3.4.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+pillow>=9.0.0
+
+# Testing
+pytest>=7.0.0
+
+# Build tools (macOS only - install separately)
+# py2app>=0.28.0
