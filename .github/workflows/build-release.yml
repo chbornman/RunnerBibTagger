@@ -84,7 +84,12 @@ jobs:
       - name: Build executable
         # Use --onedir (not --onefile) for macOS so all bundled binaries can be signed
         # --onefile extracts to temp at runtime, losing signatures
-        run: pyinstaller --onedir --windowed --name RunnerBibTagger --add-data "models:models" main.py
+        run: |
+          pyinstaller --onedir --windowed \
+            --name RunnerBibTagger \
+            --osx-bundle-identifier "com.bibtagger.runnerbibTagger" \
+            --add-data "models:models" \
+            main.py
 
       - name: Import Apple certificate
         env:
@@ -132,11 +137,14 @@ jobs:
           echo "Signing with: $IDENTITY"
 
           APP_PATH="dist/RunnerBibTagger.app"
+          ENTITLEMENTS="entitlements.plist"
 
           # Show what we're working with
           echo "=== App bundle structure ==="
           find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -name "Python" \) | head -20
           echo "..."
+          echo "Total dylibs: $(find "$APP_PATH" -name "*.dylib" | wc -l)"
+          echo "Total .so files: $(find "$APP_PATH" -name "*.so" | wc -l)"
 
           # Remove any existing signatures and extended attributes that cause issues
           echo "=== Removing extended attributes ==="
@@ -144,45 +152,46 @@ jobs:
 
           # Sign ALL code objects inside the bundle (dylibs, so files, frameworks, executables)
           # Must sign from innermost to outermost
+          # Use entitlements for hardened runtime compatibility with Python
 
           # 1. Sign all .dylib files
           echo "=== Signing .dylib files ==="
           find "$APP_PATH" -name "*.dylib" | while read lib; do
-            echo "Signing: $lib"
-            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$lib"
+            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$lib"
           done
+          echo "Done signing dylibs"
 
           # 2. Sign all .so files (Python extensions)
           echo "=== Signing .so files ==="
           find "$APP_PATH" -name "*.so" | while read lib; do
-            echo "Signing: $lib"
-            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$lib"
+            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$lib"
           done
+          echo "Done signing .so files"
 
           # 3. Sign Python binary specifically (it may not have an extension)
           echo "=== Signing Python binary ==="
           find "$APP_PATH" -name "Python" -type f | while read pybin; do
             echo "Signing: $pybin"
-            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$pybin"
+            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$pybin"
           done
 
           # 4. Sign all framework bundles (must sign the bundle, not individual files)
           echo "=== Signing .framework bundles ==="
           find "$APP_PATH" -name "*.framework" -type d | while read framework; do
             echo "Signing framework: $framework"
-            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$framework"
+            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$framework"
           done
 
           # 5. Sign all executables in MacOS folder
           echo "=== Signing executables in MacOS ==="
           find "$APP_PATH/Contents/MacOS" -type f -perm +111 | while read exe; do
             echo "Signing: $exe"
-            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$exe"
+            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$exe"
           done
 
           # 6. Sign the main app bundle last
           echo "=== Signing main app bundle ==="
-          codesign --force --options runtime --sign "$IDENTITY" --timestamp "$APP_PATH"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$APP_PATH"
 
           # Verify signature
           echo "=== Verifying signature ==="
