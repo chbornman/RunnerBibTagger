@@ -181,6 +181,9 @@ class BibTaggerApp:
         self.root.minsize(1100, 700)
         self.root.configure(bg=COLORS['bg'])
 
+        # Set app icon
+        self._set_icon()
+
         # Configure styles
         configure_styles()
 
@@ -204,6 +207,24 @@ class BibTaggerApp:
 
         # Update image count when subfolder option changes
         self.include_subfolders.trace_add('write', lambda *args: self._update_image_count())
+
+    def _set_icon(self):
+        """Set the application icon."""
+        try:
+            # Find icon path (handle bundled app case)
+            if getattr(sys, 'frozen', False):
+                bundle_dir = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(sys.executable).parent
+            else:
+                bundle_dir = Path(__file__).parent
+
+            icon_path = bundle_dir / 'icon.png'
+            if icon_path.exists():
+                icon_image = Image.open(icon_path)
+                icon_photo = ImageTk.PhotoImage(icon_image)
+                self.root.iconphoto(True, icon_photo)
+                self._icon_photo = icon_photo  # Keep reference to prevent garbage collection
+        except Exception:
+            pass  # Silently ignore icon loading failures
 
     def _create_widgets(self):
         """Create all GUI widgets."""
