@@ -6,22 +6,8 @@ on:
       - 'v*'
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact_name: RunnerBibTagger-Linux
-            build_cmd: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
-          - os: windows-latest
-            artifact_name: RunnerBibTagger-Windows
-            build_cmd: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models;models" main.py
-          - os: macos-latest
-            artifact_name: RunnerBibTagger-macOS
-            build_cmd: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
-
-    runs-on: ${{ matrix.os }}
-
+  build-linux:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,18 +24,128 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: ${{ matrix.build_cmd }}
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
 
-      - name: Rename Linux binary
-        if: matrix.os == 'ubuntu-latest'
+      - name: Rename binary
         run: mv dist/RunnerBibTagger dist/RunnerBibTagger-Linux
 
-      - name: Rename Windows binary
-        if: matrix.os == 'windows-latest'
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RunnerBibTagger-Linux
+          path: dist/RunnerBibTagger-Linux
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models;models" main.py
+
+      - name: Rename binary
         run: mv dist/RunnerBibTagger.exe dist/RunnerBibTagger-Windows.exe
 
-      - name: Zip macOS app bundle
-        if: matrix.os == 'macos-latest'
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RunnerBibTagger-Windows
+          path: dist/RunnerBibTagger-Windows.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
+
+      - name: Import Apple certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          # Decode certificate
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+
+          # Create and configure keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import certificate
+          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      - name: Sign app bundle
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Find the Developer ID Application certificate
+          IDENTITY="Developer ID Application: $(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          echo "Signing with: $IDENTITY"
+
+          # Sign all binaries inside the app bundle
+          find "dist/RunnerBibTagger.app" -type f -perm +111 -exec codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+
+          # Sign the app bundle itself
+          codesign --force --options runtime --sign "$IDENTITY" --timestamp "dist/RunnerBibTagger.app"
+
+          # Verify signature
+          codesign --verify --deep --strict --verbose=2 "dist/RunnerBibTagger.app"
+
+      - name: Notarize app bundle
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Create ZIP for notarization
+          ditto -c -k --keepParent "dist/RunnerBibTagger.app" "dist/RunnerBibTagger-notarize.zip"
+
+          # Submit for notarization
+          xcrun notarytool submit "dist/RunnerBibTagger-notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          # Staple the notarization ticket to the app
+          xcrun stapler staple "dist/RunnerBibTagger.app"
+
+          # Clean up notarization zip
+          rm "dist/RunnerBibTagger-notarize.zip"
+
+      - name: Create distribution ZIP
         run: |
           cd dist
           zip -r RunnerBibTagger-macOS.zip RunnerBibTagger.app
@@ -57,13 +153,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: |
-            dist/RunnerBibTagger-*
-            !dist/*.spec
+          name: RunnerBibTagger-macOS
+          path: dist/RunnerBibTagger-macOS.zip
 
   release:
-    needs: build
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
