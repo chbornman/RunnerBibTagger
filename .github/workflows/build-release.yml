@@ -13,18 +13,12 @@ jobs:
           - os: ubuntu-latest
             artifact_name: RunnerBibTagger-Linux
             build_cmd: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
-            asset_path: dist/RunnerBibTagger
-            asset_name: RunnerBibTagger-Linux
           - os: windows-latest
             artifact_name: RunnerBibTagger-Windows
             build_cmd: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models;models" main.py
-            asset_path: dist/RunnerBibTagger.exe
-            asset_name: RunnerBibTagger-Windows.exe
           - os: macos-latest
             artifact_name: RunnerBibTagger-macOS
             build_cmd: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
-            asset_path: dist/RunnerBibTagger.app
-            asset_name: RunnerBibTagger-macOS.app
 
     runs-on: ${{ matrix.os }}
 
@@ -46,6 +40,14 @@ jobs:
       - name: Build executable
         run: ${{ matrix.build_cmd }}
 
+      - name: Rename Linux binary
+        if: matrix.os == 'ubuntu-latest'
+        run: mv dist/RunnerBibTagger dist/RunnerBibTagger-Linux
+
+      - name: Rename Windows binary
+        if: matrix.os == 'windows-latest'
+        run: mv dist/RunnerBibTagger.exe dist/RunnerBibTagger-Windows.exe
+
       - name: Zip macOS app bundle
         if: matrix.os == 'macos-latest'
         run: |
@@ -57,7 +59,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            dist/RunnerBibTagger*
+            dist/RunnerBibTagger-*
             !dist/*.spec
 
   release:
@@ -79,8 +81,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/RunnerBibTagger-Linux/RunnerBibTagger
-            artifacts/RunnerBibTagger-Windows/RunnerBibTagger.exe
+            artifacts/RunnerBibTagger-Linux/RunnerBibTagger-Linux
+            artifacts/RunnerBibTagger-Windows/RunnerBibTagger-Windows.exe
             artifacts/RunnerBibTagger-macOS/RunnerBibTagger-macOS.zip
           draft: false
           prerelease: false

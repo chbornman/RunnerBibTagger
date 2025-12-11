@@ -9,6 +9,3 @@ pillow>=9.0.0
 
 # Testing
 pytest>=7.0.0
-
-# Build tools (macOS only - install separately)
-# py2app>=0.28.0

@@ -55,16 +55,22 @@ python main.py race.jpg --confidence 0.3
 python -m pytest tests/ -v
 ```
 
-## Build for macOS
+## Building Executables
+
+Release builds are automated via GitHub Actions on tag push. See `.github/workflows/build-release.yml`.
+
+For local builds:
 
 ```bash
-# Install py2app
-pip install py2app
+pip install pyinstaller
 
-# Build .app bundle
-python setup_macos.py py2app
+# Linux/macOS
+pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
 
-# Output: dist/Bib Tagger.app
+# Windows
+pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models;models" main.py
+
+# Output: dist/RunnerBibTagger (or .exe on Windows)
 ```
 
 ## Key Technical Details
