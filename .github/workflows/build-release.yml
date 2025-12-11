@@ -129,14 +129,39 @@ jobs:
 
           echo "Signing with: $IDENTITY"
 
-          # Sign all binaries inside the app bundle
-          find "dist/RunnerBibTagger.app" -type f -perm +111 -exec codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+          APP_PATH="dist/RunnerBibTagger.app"
 
-          # Sign the app bundle itself
-          codesign --force --options runtime --sign "$IDENTITY" --timestamp "dist/RunnerBibTagger.app"
+          # Remove any existing signatures and extended attributes that cause issues
+          xattr -cr "$APP_PATH"
+
+          # Sign ALL code objects inside the bundle (dylibs, so files, frameworks, executables)
+          # Must sign from innermost to outermost
+
+          # 1. Sign all .dylib files
+          find "$APP_PATH" -name "*.dylib" -exec codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+
+          # 2. Sign all .so files (Python extensions)
+          find "$APP_PATH" -name "*.so" -exec codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+
+          # 3. Sign all framework bundles (sign the versioned folder, not individual files)
+          find "$APP_PATH" -name "*.framework" -type d | while read framework; do
+            # Sign the framework bundle itself
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$framework"
+          done
+
+          # 4. Sign all executables in MacOS folder and any other binaries
+          find "$APP_PATH/Contents/MacOS" -type f -perm +111 -exec codesign --force --options runtime --sign "$IDENTITY" --timestamp {} \;
+
+          # 5. Sign the main app bundle last
+          codesign --force --options runtime --sign "$IDENTITY" --timestamp "$APP_PATH"
 
           # Verify signature
-          codesign --verify --deep --strict --verbose=2 "dist/RunnerBibTagger.app"
+          echo "Verifying signature..."
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          # Additional check for any unsigned code
+          echo "Checking for unsigned code..."
+          codesign --verify --deep "$APP_PATH" 2>&1 || true
 
       - name: Notarize app bundle
         env:
