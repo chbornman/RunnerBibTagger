@@ -38,8 +38,8 @@ sudo pacman -S perl-image-exiftool
 
 ```bash
 # Clone the repository
-git clone https://github.com/chbornman/bib-tagger.git
-cd bib-tagger
+git clone https://github.com/chbornman/RunnerBibTagger.git
+cd RunnerBibTagger
 
 # Create virtual environment
 python -m venv venv
