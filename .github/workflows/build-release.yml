@@ -24,7 +24,8 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.png --add-data "models:models" main.py
+        # --collect-data rapidocr includes YAML configs and ONNX models that RapidOCR needs
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.png --add-data "models:models" --collect-data rapidocr main.py
 
       - name: Rename binary
         run: mv dist/RunnerBibTagger dist/RunnerBibTagger-Linux
@@ -53,7 +54,8 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.ico --add-data "models;models" main.py
+        # --collect-data rapidocr includes YAML configs and ONNX models that RapidOCR needs
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.ico --add-data "models;models" --collect-data rapidocr main.py
 
       - name: Rename binary
         run: mv dist/RunnerBibTagger.exe dist/RunnerBibTagger-Windows.exe
@@ -136,6 +138,7 @@ jobs:
       - name: Build executable with code signing
         # PyInstaller signs all embedded binaries when --codesign-identity is provided
         # This is critical for macOS - signing after build doesn't work for embedded archives
+        # --collect-data rapidocr includes YAML configs and ONNX models that RapidOCR needs
         run: |
           echo "Building with codesign identity: $CODESIGN_IDENTITY"
           pyinstaller --onedir --windowed \
@@ -145,6 +148,7 @@ jobs:
             --codesign-identity "$CODESIGN_IDENTITY" \
             --icon icon.icns \
             --add-data "models:models" \
+            --collect-data rapidocr \
             main.py
 
       - name: Re-sign app bundle with timestamp
