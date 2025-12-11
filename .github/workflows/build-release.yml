@@ -24,7 +24,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models:models" main.py
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.png --add-data "models:models" main.py
 
       - name: Rename binary
         run: mv dist/RunnerBibTagger dist/RunnerBibTagger-Linux
@@ -53,7 +53,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --name RunnerBibTagger --add-data "models;models" main.py
+        run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.ico --add-data "models;models" main.py
 
       - name: Rename binary
         run: mv dist/RunnerBibTagger.exe dist/RunnerBibTagger-Windows.exe
@@ -81,16 +81,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build executable
-        # Use --onedir (not --onefile) for macOS so all bundled binaries can be signed
-        # --onefile extracts to temp at runtime, losing signatures
-        run: |
-          pyinstaller --onedir --windowed \
-            --name RunnerBibTagger \
-            --osx-bundle-identifier "com.bibtagger.runnerbibTagger" \
-            --add-data "models:models" \
-            main.py
-
+      # Import certificate BEFORE building so PyInstaller can use it
       - name: Import Apple certificate
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -122,84 +113,62 @@ jobs:
           # Save keychain path for later steps
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
-      - name: Sign app bundle
-        run: |
-          # Find the Developer ID Application certificate identity hash
+          # Export the signing identity for PyInstaller
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> $GITHUB_ENV
 
-          if [ -z "$IDENTITY" ]; then
-            echo "ERROR: No Developer ID Application certificate found"
-            echo "Available identities:"
-            security find-identity -v -p codesigning
-            exit 1
-          fi
+      - name: Create macOS icon
+        run: |
+          # Convert PNG to ICNS for macOS
+          mkdir -p icon.iconset
+          sips -z 16 16 icon.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32 icon.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 icon.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64 icon.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 icon.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256 icon.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 icon.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 icon.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 icon.png --out icon.iconset/icon_512x512.png
+          cp icon.png icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o icon.icns
 
-          echo "Signing with: $IDENTITY"
+      - name: Build executable with code signing
+        # PyInstaller signs all embedded binaries when --codesign-identity is provided
+        # This is critical for macOS - signing after build doesn't work for embedded archives
+        run: |
+          echo "Building with codesign identity: $CODESIGN_IDENTITY"
+          pyinstaller --onedir --windowed \
+            --name RunnerBibTagger \
+            --osx-bundle-identifier "com.bibtagger.runnerbibtagger" \
+            --osx-entitlements-file entitlements.plist \
+            --codesign-identity "$CODESIGN_IDENTITY" \
+            --icon icon.icns \
+            --add-data "models:models" \
+            main.py
 
+      - name: Verify and re-sign app bundle
+        # PyInstaller already signed the embedded binaries, but we re-sign the outer
+        # bundle with a timestamp for notarization and verify everything
+        run: |
           APP_PATH="dist/RunnerBibTagger.app"
           ENTITLEMENTS="entitlements.plist"
 
-          # Show what we're working with
           echo "=== App bundle structure ==="
-          find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -name "Python" \) | head -20
-          echo "..."
           echo "Total dylibs: $(find "$APP_PATH" -name "*.dylib" | wc -l)"
           echo "Total .so files: $(find "$APP_PATH" -name "*.so" | wc -l)"
 
-          # Remove any existing signatures and extended attributes that cause issues
-          echo "=== Removing extended attributes ==="
+          # Remove quarantine attributes
           xattr -cr "$APP_PATH"
 
-          # Sign ALL code objects inside the bundle (dylibs, so files, frameworks, executables)
-          # Must sign from innermost to outermost
-          # Use entitlements for hardened runtime compatibility with Python
-
-          # 1. Sign all .dylib files
-          echo "=== Signing .dylib files ==="
-          find "$APP_PATH" -name "*.dylib" | while read lib; do
-            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$lib"
-          done
-          echo "Done signing dylibs"
-
-          # 2. Sign all .so files (Python extensions)
-          echo "=== Signing .so files ==="
-          find "$APP_PATH" -name "*.so" | while read lib; do
-            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$lib"
-          done
-          echo "Done signing .so files"
-
-          # 3. Sign Python binary specifically (it may not have an extension)
-          echo "=== Signing Python binary ==="
-          find "$APP_PATH" -name "Python" -type f | while read pybin; do
-            echo "Signing: $pybin"
-            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$pybin"
-          done
-
-          # 4. Sign all framework bundles (must sign the bundle, not individual files)
-          echo "=== Signing .framework bundles ==="
-          find "$APP_PATH" -name "*.framework" -type d | while read framework; do
-            echo "Signing framework: $framework"
-            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$framework"
-          done
-
-          # 5. Sign all executables in MacOS folder
-          echo "=== Signing executables in MacOS ==="
-          find "$APP_PATH/Contents/MacOS" -type f -perm +111 | while read exe; do
-            echo "Signing: $exe"
-            codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$exe"
-          done
-
-          # 6. Sign the main app bundle last
-          echo "=== Signing main app bundle ==="
-          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" --timestamp "$APP_PATH"
+          # Re-sign the main app bundle with timestamp (required for notarization)
+          echo "=== Re-signing app bundle with timestamp ==="
+          codesign --force --deep --options runtime --entitlements "$ENTITLEMENTS" \
+            --sign "$CODESIGN_IDENTITY" --timestamp "$APP_PATH"
 
           # Verify signature
           echo "=== Verifying signature ==="
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-
-          # Additional check for any unsigned code
-          echo "=== Final verification ==="
-          codesign --verify --deep "$APP_PATH" 2>&1 || true
 
       - name: Notarize app bundle
         env:
