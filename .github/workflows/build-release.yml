@@ -147,9 +147,10 @@ jobs:
             --add-data "models:models" \
             main.py
 
-      - name: Verify and re-sign app bundle
-        # PyInstaller already signed the embedded binaries, but we re-sign the outer
-        # bundle with a timestamp for notarization and verify everything
+      - name: Re-sign app bundle with timestamp
+        # PyInstaller signs but without timestamp. We must re-sign with
+        # --deep --timestamp for notarization. Based on:
+        # https://haim.dev/posts/2020-08-08-python-macos-app/
         run: |
           APP_PATH="dist/RunnerBibTagger.app"
           ENTITLEMENTS="entitlements.plist"
@@ -161,10 +162,11 @@ jobs:
           # Remove quarantine attributes
           xattr -cr "$APP_PATH"
 
-          # Re-sign the main app bundle with timestamp (required for notarization)
+          # Re-sign with timestamp (required for notarization)
+          # Using -s instead of --sign, and explicit flags as recommended
           echo "=== Re-signing app bundle with timestamp ==="
-          codesign --force --deep --options runtime --entitlements "$ENTITLEMENTS" \
-            --sign "$CODESIGN_IDENTITY" --timestamp "$APP_PATH"
+          codesign -s "$CODESIGN_IDENTITY" -v --deep --timestamp \
+            --entitlements "$ENTITLEMENTS" -o runtime "$APP_PATH"
 
           # Verify signature
           echo "=== Verifying signature ==="
@@ -193,9 +195,10 @@ jobs:
           rm "dist/RunnerBibTagger-notarize.zip"
 
       - name: Create distribution ZIP
+        # Use ditto instead of zip to preserve code signatures and extended attributes
         run: |
           cd dist
-          zip -r RunnerBibTagger-macOS.zip RunnerBibTagger.app
+          ditto -c -k --keepParent RunnerBibTagger.app RunnerBibTagger-macOS.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
