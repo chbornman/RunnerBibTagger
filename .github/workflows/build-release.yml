@@ -163,9 +163,9 @@ jobs:
           xattr -cr "$APP_PATH"
 
           # Re-sign with timestamp (required for notarization)
-          # Using -s instead of --sign, and explicit flags as recommended
+          # Using -s, -f (force), --deep, --timestamp as recommended
           echo "=== Re-signing app bundle with timestamp ==="
-          codesign -s "$CODESIGN_IDENTITY" -v --deep --timestamp \
+          codesign -s "$CODESIGN_IDENTITY" -f -v --deep --timestamp \
             --entitlements "$ENTITLEMENTS" -o runtime "$APP_PATH"
 
           # Verify signature
