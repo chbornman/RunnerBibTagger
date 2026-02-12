@@ -7,7 +7,6 @@ No PyTorch or PaddlePaddle dependencies required.
 """
 
 import os
-import subprocess
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -15,6 +14,7 @@ from typing import Callable, Optional
 import cv2
 import numpy as np
 import onnxruntime as ort
+import pyexiv2
 from rapidocr import RapidOCR
 
 
@@ -258,27 +258,30 @@ class BibTagger:
         return texts[0], confidences[0] if confidences else 0.0
 
     def write_iptc_metadata(self, image_path: str, bib_numbers: list[str]) -> bool:
-        """Write bib numbers to image IPTC metadata using exiftool."""
+        """Write bib numbers to image IPTC metadata using pyexiv2."""
         if not bib_numbers:
             return True
 
         # Build IPTC keywords with BIB: prefix
-        keywords = [f"BIB:{bib}" for bib in bib_numbers]
-
-        # Build exiftool command
-        cmd = ['exiftool', '-overwrite_original']
-        for kw in keywords:
-            cmd.extend(['-Keywords+=' + kw])
-        cmd.append(image_path)
+        new_keywords = [f"BIB:{bib}" for bib in bib_numbers]
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return result.returncode == 0
+            with pyexiv2.Image(image_path) as img:
+                # Get existing keywords or empty list
+                iptc = img.read_iptc()
+                key = 'Iptc.Application2.Keywords'
+                existing_keywords = iptc.get(key, [])
+                if isinstance(existing_keywords, str):
+                    existing_keywords = [existing_keywords]
+
+                # Add new keywords (avoid duplicates)
+                for kw in new_keywords:
+                    if kw not in existing_keywords:
+                        existing_keywords.append(kw)
+
+                # Write keywords
+                img.modify_iptc({key: existing_keywords})
+            return True
         except Exception:
             return False
 

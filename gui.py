@@ -26,6 +26,7 @@ from tkinter.scrolledtext import ScrolledText
 from PIL import Image, ImageTk
 
 from bib_tagger import BibTagger, get_image_files
+from version import __version__
 
 
 # Color scheme - dark grey neutral with green accent
@@ -176,7 +177,7 @@ class BibTaggerApp:
 
     def __init__(self, root: Tk = None):
         self.root = root if root else Tk()
-        self.root.title("Bib Tagger")
+        self.root.title(f"Bib Tagger v{__version__}")
         self.root.geometry("1400x800")
         self.root.minsize(1100, 700)
         self.root.configure(bg=COLORS['bg'])
@@ -207,6 +208,9 @@ class BibTaggerApp:
 
         # Update image count when subfolder option changes
         self.include_subfolders.trace_add('write', lambda *args: self._update_image_count())
+
+        # Check for updates in background after a short delay
+        self.root.after(1500, self._check_updates_async)
 
     def _set_icon(self):
         """Set the application icon."""
@@ -897,6 +901,197 @@ class BibTaggerApp:
         else:
             # Linux - try xdg-open
             subprocess.run(['xdg-open', folder])
+
+    # ===== AUTO-UPDATE METHODS =====
+
+    def _check_updates_async(self):
+        """Check for updates in a background thread."""
+        def check():
+            try:
+                from updater import check_for_updates
+                update_info = check_for_updates()
+                if update_info:
+                    self.root.after(0, lambda: self._show_update_dialog(update_info))
+            except Exception as e:
+                # Silently ignore update check failures
+                print(f"Update check failed: {e}")
+
+        thread = threading.Thread(target=check, daemon=True)
+        thread.start()
+
+    def _show_update_dialog(self, update_info):
+        """Show the update available dialog."""
+        from tkinter import Toplevel, Text
+
+        dialog = Toplevel(self.root)
+        dialog.title("Update Available")
+        dialog.geometry("500x400")
+        dialog.configure(bg=COLORS['bg'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center on parent
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 500) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 400) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        # Content frame
+        content = ttk.Frame(dialog, style='TFrame', padding=20)
+        content.pack(fill='both', expand=True)
+
+        # Title
+        ttk.Label(
+            content,
+            text=f"Version {update_info.version} is available!",
+            style='Title.TLabel',
+            font=('Segoe UI', 18, 'bold')
+        ).pack(anchor='w', pady=(0, 5))
+
+        ttk.Label(
+            content,
+            text=f"You have version {__version__}",
+            style='Subtitle.TLabel'
+        ).pack(anchor='w', pady=(0, 15))
+
+        # Release notes
+        ttk.Label(
+            content,
+            text="What's New:",
+            style='TLabel',
+            font=('Segoe UI', 11, 'bold')
+        ).pack(anchor='w', pady=(0, 5))
+
+        notes_frame = ttk.Frame(content, style='Card.TFrame')
+        notes_frame.pack(fill='both', expand=True, pady=(0, 15))
+
+        notes_text = Text(
+            notes_frame,
+            wrap='word',
+            font=('Segoe UI', 10),
+            bg=COLORS['surface'],
+            fg=COLORS['text'],
+            borderwidth=0,
+            highlightthickness=0,
+            padx=10,
+            pady=10,
+            height=8
+        )
+        notes_text.pack(fill='both', expand=True)
+        notes_text.insert('1.0', update_info.release_notes or "No release notes available.")
+        notes_text.config(state='disabled')
+
+        # File size info
+        size_mb = update_info.file_size / (1024 * 1024)
+        ttk.Label(
+            content,
+            text=f"Download size: {size_mb:.1f} MB",
+            style='Subtitle.TLabel'
+        ).pack(anchor='w', pady=(0, 15))
+
+        # Buttons
+        btn_frame = ttk.Frame(content, style='TFrame')
+        btn_frame.pack(fill='x')
+
+        ttk.Button(
+            btn_frame,
+            text="Skip",
+            command=dialog.destroy,
+            style='TButton'
+        ).pack(side='right', padx=(10, 0))
+
+        ttk.Button(
+            btn_frame,
+            text="Download & Install",
+            command=lambda: self._start_update_download(update_info, dialog),
+            style='Primary.TButton'
+        ).pack(side='right')
+
+    def _start_update_download(self, update_info, dialog):
+        """Start downloading the update."""
+        from tkinter import Toplevel
+
+        dialog.destroy()
+
+        # Create download progress dialog
+        progress_dialog = Toplevel(self.root)
+        progress_dialog.title("Downloading Update")
+        progress_dialog.geometry("400x150")
+        progress_dialog.configure(bg=COLORS['bg'])
+        progress_dialog.transient(self.root)
+        progress_dialog.grab_set()
+        progress_dialog.resizable(False, False)
+
+        # Center on parent
+        progress_dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 400) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 150) // 2
+        progress_dialog.geometry(f"+{x}+{y}")
+
+        content = ttk.Frame(progress_dialog, style='TFrame', padding=20)
+        content.pack(fill='both', expand=True)
+
+        ttk.Label(
+            content,
+            text=f"Downloading v{update_info.version}...",
+            style='TLabel'
+        ).pack(anchor='w', pady=(0, 10))
+
+        progress_var = ttk.Progressbar(
+            content,
+            mode='determinate',
+            style='TProgressbar',
+            length=360
+        )
+        progress_var.pack(fill='x', pady=(0, 10))
+
+        progress_label = ttk.Label(
+            content,
+            text="0%",
+            style='Subtitle.TLabel'
+        )
+        progress_label.pack(anchor='w')
+
+        def update_progress(downloaded, total):
+            if total > 0:
+                percent = int((downloaded / total) * 100)
+                self.root.after(0, lambda: progress_var.configure(value=percent))
+                self.root.after(0, lambda: progress_label.configure(
+                    text=f"{downloaded / (1024*1024):.1f} / {total / (1024*1024):.1f} MB ({percent}%)"
+                ))
+
+        def download_thread():
+            try:
+                from updater import download_update, apply_update
+                downloaded_path = download_update(update_info, update_progress)
+
+                # Download complete - prompt to restart
+                self.root.after(0, lambda: self._prompt_restart(progress_dialog, downloaded_path))
+            except Exception as e:
+                self.root.after(0, lambda: progress_dialog.destroy())
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Update Failed",
+                    f"Failed to download update: {e}"
+                ))
+
+        thread = threading.Thread(target=download_thread, daemon=True)
+        thread.start()
+
+    def _prompt_restart(self, progress_dialog, downloaded_path):
+        """Prompt user to restart for the update."""
+        progress_dialog.destroy()
+
+        result = messagebox.askyesno(
+            "Update Ready",
+            "The update has been downloaded.\n\n"
+            "The application will close and restart to complete the update.\n\n"
+            "Continue?",
+            icon='question'
+        )
+
+        if result:
+            from updater import apply_update
+            apply_update(downloaded_path)
 
     def run(self):
         """Start the main event loop."""

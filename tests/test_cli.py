@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pyexiv2
 import pytest
 
 
@@ -171,15 +172,15 @@ class TestCLINoMetadata:
         test_dir = clean_test_output
         img_path = test_dir / "single_bib" / "runner_397.jpg"
 
-        # First strip any existing metadata from the temp copy
+        # First strip any existing keywords from the temp copy
         try:
-            subprocess.run(
-                ["exiftool", "-all=", "-overwrite_original", str(img_path)],
-                capture_output=True,
-                timeout=10
-            )
-        except FileNotFoundError:
-            pytest.skip("exiftool not installed")
+            with pyexiv2.Image(str(img_path)) as img:
+                iptc = img.read_iptc()
+                key = 'Iptc.Application2.Keywords'
+                if key in iptc:
+                    img.modify_iptc({key: []})
+        except Exception:
+            pass
 
         result = subprocess.run(
             [
@@ -194,11 +195,12 @@ class TestCLINoMetadata:
 
         assert result.returncode == 0
 
-        # Check no metadata was written
-        meta_result = subprocess.run(
-            ["exiftool", "-Keywords", str(img_path)],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        assert "BIB:" not in meta_result.stdout
+        # Check no metadata was written using pyexiv2
+        with pyexiv2.Image(str(img_path)) as img:
+            iptc = img.read_iptc()
+            key = 'Iptc.Application2.Keywords'
+            if key in iptc:
+                keywords = iptc[key]
+                if isinstance(keywords, str):
+                    keywords = [keywords]
+                assert not any("BIB:" in kw for kw in keywords)

@@ -9,7 +9,7 @@ Bib Tagger is a desktop application for race photographers that detects bib numb
 ## Architecture
 
 ```
-Image → YOLO ONNX (bib regions) → RapidOCR PP-OCRv4 (text) → exiftool (metadata)
+Image → YOLO ONNX (bib regions) → RapidOCR PP-OCRv4 (text) → py3exiv2 (metadata)
 ```
 
 ### Key Files
@@ -94,4 +94,4 @@ Race bibs often have secondary numbers (gear check, timing chips). The 50% heigh
 
 Bib numbers are written as IPTC Keywords: `BIB:1234`
 
-Requires `exiftool` system dependency.
+Uses `py3exiv2` Python library (wraps libexiv2, bundled with PyInstaller).

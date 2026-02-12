@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from bib_tagger import BibTagger, get_image_files
+from version import __version__
 
 
 def get_model_path() -> str:
@@ -125,7 +126,7 @@ def run_gui():
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Bib Tagger - Detect race bib numbers in photos',
+        description=f'Bib Tagger v{__version__} - Detect race bib numbers in photos',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -135,6 +136,7 @@ Examples:
 """
     )
 
+    parser.add_argument('--version', action='version', version=f'Bib Tagger v{__version__}')
     parser.add_argument('input', nargs='?', help='Image or folder to process (omit for GUI)')
     parser.add_argument('--csv', action='store_true', help='Generate CSV results file')
     parser.add_argument('--debug', action='store_true', help='Save debug images')

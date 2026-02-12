@@ -8,9 +8,9 @@ Provides:
 """
 
 import shutil
-import subprocess
 from pathlib import Path
 
+import pyexiv2
 import pytest
 
 # Project paths
@@ -127,21 +127,19 @@ def clean_fixtures(fixtures_dir):
 @pytest.fixture
 def strip_metadata(fixtures_dir):
     """
-    Strip all IPTC metadata from test images before test.
+    Strip IPTC keywords from test images before test.
     Restores clean state for metadata writing tests.
     """
-    # Strip all metadata using exiftool
-    try:
-        result = subprocess.run(
-            ["exiftool", "-all=", "-overwrite_original", "-r", str(fixtures_dir)],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-    except FileNotFoundError:
-        pytest.skip("exiftool not installed")
-    except subprocess.TimeoutExpired:
-        pytest.fail("exiftool timed out")
+    # Strip keywords using pyexiv2
+    key = 'Iptc.Application2.Keywords'
+    for img_path in fixtures_dir.rglob("*.jpg"):
+        try:
+            with pyexiv2.Image(str(img_path)) as img:
+                iptc = img.read_iptc()
+                if key in iptc:
+                    img.modify_iptc({key: []})
+        except Exception:
+            pass  # Ignore errors on individual files
 
     yield fixtures_dir
 

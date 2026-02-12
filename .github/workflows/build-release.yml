@@ -17,6 +17,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set version from tag
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Setting version to $VERSION"
+          sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" version.py
+          cat version.py
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -47,6 +54,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set version from tag
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "Setting version to $version"
+          (Get-Content version.py) -replace '__version__ = ".*"', "__version__ = `"$version`"" | Set-Content version.py
+          Get-Content version.py
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -56,6 +71,39 @@ jobs:
       - name: Build executable
         # --collect-data rapidocr includes YAML configs and ONNX models that RapidOCR needs
         run: pyinstaller --onefile --windowed --name RunnerBibTagger --icon icon.ico --add-data "models;models" --collect-data rapidocr main.py
+
+      - name: Sign Windows executable
+        if: env.WINDOWS_CERTIFICATE_BASE64 != ''
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          # Decode certificate from base64
+          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)
+          $certPath = "$env:RUNNER_TEMP\certificate.pfx"
+          [IO.File]::WriteAllBytes($certPath, $certBytes)
+
+          # Find signtool.exe from Windows SDK
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+                      Where-Object { $_.FullName -match "x64" } |
+                      Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found"
+            exit 1
+          }
+
+          Write-Host "Using signtool: $signtool"
+
+          # Sign the executable
+          & $signtool sign /f $certPath /p $env:WINDOWS_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "dist\RunnerBibTagger.exe"
+
+          # Verify the signature
+          & $signtool verify /pa "dist\RunnerBibTagger.exe"
+
+          # Clean up certificate
+          Remove-Item $certPath -Force
 
       - name: Rename binary
         run: mv dist/RunnerBibTagger.exe dist/RunnerBibTagger-Windows.exe
@@ -76,6 +124,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Set version from tag
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Setting version to $VERSION"
+          sed -i '' "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" version.py
+          cat version.py
 
       - name: Install dependencies
         run: |

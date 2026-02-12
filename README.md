@@ -10,7 +10,7 @@ Feed it a folder of race photos, and it will detect bib numbers and write them t
 - **YOLO-based bib detection** - Fast, accurate detection of race bibs
 - **RapidOCR digit recognition** - PP-OCRv4 models for reading bib numbers
 - **Smart filtering** - 50% height threshold rejects secondary numbers (gear check, timing chips)
-- **EXIF metadata tagging** - Writes bib numbers to IPTC Keywords via exiftool
+- **IPTC metadata tagging** - Writes bib numbers to IPTC Keywords (no external dependencies)
 - **Batch processing** - Process entire folders of images
 - **Debug visualization** - Optional annotated output images showing detections
 - **Lightweight** - ONNX-only inference (~250MB vs 2GB+ with PyTorch)
@@ -20,19 +20,6 @@ Feed it a folder of race photos, and it will detect bib numbers and write them t
 ### Prerequisites
 
 - Python 3.10+
-- [exiftool](https://exiftool.org/) - Required for writing metadata
-
-```bash
-# Install exiftool
-# macOS:
-brew install exiftool
-
-# Ubuntu/Debian:
-sudo apt install libimage-exiftool-perl
-
-# Arch Linux:
-sudo pacman -S perl-image-exiftool
-```
 
 ### Setup
 
@@ -148,7 +135,7 @@ Image → YOLO Detection → RapidOCR → Height Filtering → Metadata Write
 3. **Digit Filtering**: Non-digit characters are removed
 4. **Height Filtering**: Text regions smaller than 50% of the tallest are rejected
 5. **Selection**: The largest remaining text region is selected as the bib number
-6. **Metadata**: Bib numbers are written to IPTC Keywords using exiftool
+6. **Metadata**: Bib numbers are written to IPTC Keywords
 
 ### Why 50% Height Filtering?
 
@@ -172,10 +159,7 @@ This format:
 - Doesn't conflict with other keywords
 - Allows searches like `BIB:1234` or `BIB:*`
 
-To verify metadata:
-```bash
-exiftool -Keywords photo.jpg
-```
+To verify metadata, use any IPTC-compatible tool (Lightroom, Photo Mechanic, exiftool, etc.).
 
 ## Supported Formats
 
@@ -190,7 +174,7 @@ Files with `_debug` in the filename are automatically skipped.
 - [onnxruntime](https://onnxruntime.ai/) - ONNX model inference
 - [rapidocr](https://github.com/RapidAI/RapidOCR) - OCR with PP-OCRv4 models
 - [opencv-python](https://opencv.org/) - Image processing
-- [exiftool](https://exiftool.org/) - Metadata writing (system dependency)
+- [py3exiv2](https://launchpad.net/py3exiv2) - IPTC/EXIF metadata writing
 
 ## Troubleshooting
 
@@ -204,9 +188,8 @@ Files with `_debug` in the filename are automatically skipped.
 - The 50% height filter should reject most secondary numbers
 
 ### "Failed to write metadata"
-- Ensure exiftool is installed: `exiftool -ver`
 - Check file permissions
-- Verify image format supports IPTC metadata
+- Verify image format supports IPTC metadata (JPEG, TIFF)
 
 ## Testing
 

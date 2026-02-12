@@ -7,9 +7,9 @@ without actually launching the GUI window.
 
 import csv
 import shutil
-import subprocess
 from pathlib import Path
 
+import pyexiv2
 import pytest
 
 from bib_tagger import BibTagger, get_image_files
@@ -171,18 +171,15 @@ class TestWriteMetadataOption:
         result = tagger.process_image(str(img_path), write_metadata=True)
 
         if result["bibs"]:
-            # Check metadata was written
-            try:
-                proc = subprocess.run(
-                    ["exiftool", "-Keywords", str(img_path)],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                # Should contain BIB: keyword
-                assert "BIB:" in proc.stdout, f"No BIB keyword found in {img_path}"
-            except FileNotFoundError:
-                pytest.skip("exiftool not installed")
+            # Check metadata was written using pyexiv2
+            with pyexiv2.Image(str(img_path)) as img:
+                iptc = img.read_iptc()
+                key = 'Iptc.Application2.Keywords'
+                assert key in iptc, f"No IPTC keywords found in {img_path}"
+                keywords = iptc[key]
+                if isinstance(keywords, str):
+                    keywords = [keywords]
+                assert any("BIB:" in kw for kw in keywords), f"No BIB keyword found in {img_path}"
 
     def test_metadata_not_written_when_disabled(self, tagger, clean_test_output, strip_metadata):
         """No metadata changes when option is disabled."""
@@ -192,18 +189,15 @@ class TestWriteMetadataOption:
         # Process with metadata writing disabled
         result = tagger.process_image(str(img_path), write_metadata=False)
 
-        # Check metadata was NOT written
-        try:
-            proc = subprocess.run(
-                ["exiftool", "-Keywords", str(img_path)],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            # Should NOT contain BIB: keyword
-            assert "BIB:" not in proc.stdout
-        except FileNotFoundError:
-            pytest.skip("exiftool not installed")
+        # Check metadata was NOT written using pyexiv2
+        with pyexiv2.Image(str(img_path)) as img:
+            iptc = img.read_iptc()
+            key = 'Iptc.Application2.Keywords'
+            if key in iptc:
+                keywords = iptc[key]
+                if isinstance(keywords, str):
+                    keywords = [keywords]
+                assert not any("BIB:" in kw for kw in keywords)
 
 
 class TestIncludeSubfoldersOption:
